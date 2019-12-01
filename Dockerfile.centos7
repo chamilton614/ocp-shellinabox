@@ -28,21 +28,35 @@ ADD nanorc /tmp/nanorc
 # Set the default password for our 'developer' user
 # Randomize root's password
 # Be sure to remove login's lock file
+
+ARG EPEL_VERSION=epel-release.rpm
+ARG OC_VERSION=3.11.0
+ARG OC_FILE=some.tar.gz
+
 RUN echo "" && \
     cat /opt/siab.logo.txt && \
+    echo "=== Get epel-release ===" && \
+    EPEL_VERSION=$(curl -k http://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/ \
+    | grep epel-release | awk -F \"\> '{print $3}' | awk -F \< '{print $1}') && \
     echo "=== Installing EPEL ===" && \
-    yum install -y http://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/epel-release-7-11.noarch.rpm && \
+    yum install -y http://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/${EPEL_VERSION} && \
     echo "\n=== Installing developer tools ===" && \
     yum install -y jq vim screen which hostname passwd tmux nano wget git bash-completion openssl shellinabox util-linux expect --enablerepo=epel && \
     yum clean all && \
     cd /tmp/ && \
+    echo "\n=== Get oc Version ===" && \
+    OC_VERSION=$(curl -k https://github.com/openshift/origin/releases/latest \
+	| awk '{print $5}' | awk -F \" '{print $2}' | awk -F /v '{print $2}') && \
+    OC_FILE=$(curl -k https://github.com/openshift/origin/releases/tag/v${OC_VERSION} \
+    | grep -G openshift-origin-client-tools-v${OC_VERSION} | awk '{print $2}' \
+    | grep -Ev 'href=|class=|.zip') && \
     echo "\n=== Installing oc ===" && \
-    wget https://github.com/openshift/origin/releases/download/v3.10.0/openshift-origin-client-tools-v3.10.0-dd10d17-linux-64bit.tar.gz && \
+    wget https://github.com/openshift/origin/releases/download/v${OC_VERSION}/${OC_FILE} && \
     ls -lah /tmp/ && \
     echo "\n=== Untar'ing 'oc' ===" && \
-    tar zxvf /tmp/openshift-origin-client-tools-v3.10.0-dd10d17-linux-64bit.tar.gz && \
+    tar zxvf /tmp/${OC_FILE} && \
     echo "\n=== Copying 'oc' ===" && \
-    mv -v /tmp/openshift-origin-client-tools-v3.10.0-dd10d17-linux-64bit/oc /usr/local/bin/ && \
+    mv -v /tmp/${OC_FILE::-7}/oc /usr/local/bin/ && \
     echo "\n=== Installing 'developer' user ===" && \
     useradd -u 1001 developer -m && \
     mkdir -pv /home/developer/bin /home/developer/tmp && \
