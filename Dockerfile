@@ -1,12 +1,17 @@
-FROM registry.access.redhat.com/rhel7-minimal
+FROM centos:7
 
-WORKDIR /tmp
+#WORKDIR /tmp
 
 # Run as root
 USER 0
 
+ENV APP_ROOT=/opt/app-root
+ENV HOME=${APP_ROOT}
+
+COPY bin/ ${APP_ROOT}/bin/
+
 # Add our init script
-ADD startsiab.sh /opt/startsiab.sh
+#ADD startsiab.sh /opt/startsiab.sh
 # Add our logo
 ADD siab.logo.txt /opt/siab.logo.txt
 # Fix up the Reverse coloring
@@ -17,8 +22,6 @@ ADD dockerfile.nanorc /usr/share/nano/dockerfile.nanorc
 ADD javascript.nanorc /usr/share/nano/javascript.nanorc
 # Enable nano syntax highlighting
 ADD nanorc /tmp/nanorc
-# Enable custom motd
-ADD motd /etc/motd
 
 # Install EPEL
 # Install our developer tools (tmux, ansible, nano, vim, bash-completion, wget)
@@ -33,24 +36,18 @@ ADD motd /etc/motd
 RUN echo "" && \
     cat /opt/siab.logo.txt && \
     echo "=== Installing EPEL ===" && \
-    curl -o /tmp/epel.rpm https://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/epel-release-7-14.noarch.rpm && \
-    rpm -ivh /tmp/epel.rpm && \
+    yum install -y https://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/epel-release-7-14.noarch.rpm && \
     echo "\n=== Installing developer tools ===" && \
-    microdnf \
-       --enablerepo=rhel-7-server-rpms \
-       --enablerepo=rhel-7-server-extras-rpms \
-       --enablerepo=rhel-7-server-optional-rpms \
-       --enablerepo=rhel-7-server-ose-3.11-rpms \
-       --enablerepo=rhel-7-server-devtools-rpms \
-       --enablerepo=rhel-server-rhscl-7-rpms \
-       --enablerepo=epel \
-       install \
-       jq vim screen which hostname passwd tmux nano wget git \
-       bash-completion openssl shellinabox util-linux expect \
-       atomic-openshift-clients \
-    && \
-    microdnf clean all && \
-    cd /tmp && \
+    yum install -y jq vim screen which hostname passwd tmux nano wget git bash-completion openssl shellinabox util-linux expect --enablerepo=epel && \
+    yum clean all && \
+    cd /tmp/ && \
+    echo "\n=== Installing oc ===" && \
+    wget https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/openshift-client-linux.tar.gz && \
+    ls -lah /tmp/ && \
+    echo "\n=== Untar'ing 'oc' ===" && \
+    tar zxvf /tmp/openshift-client-linux.tar.gz && \
+    echo "\n=== Copying 'oc' ===" && \
+    mv -v /tmp/oc /usr/local/bin && \
     echo "\n=== Installing 'developer' user ===" && \
     useradd -u 1001 developer -m && \
     mkdir -pv /home/developer/bin /home/developer/tmp && \
@@ -64,16 +61,41 @@ RUN echo "" && \
     ( cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 128 | head -n 1 | passwd root --stdin ) && \
     echo "\n=== Removing login's lock file ===" && \
     rm -f /var/run/nologin && \
-    echo "*** Done building siab container ***" && \
-    cat /opt/siab.logo.txt && \
-    echo ""
+    echo "\n*** Done building siab container ***" && \
+    cat /opt/siab.logo.txt
 
+### Setup user for build execution and application runtime
+#ENV JAVA_HOME=/usr/lib/jvm/jre-openjdk
+#ENV M2_HOME=/opt/maven
+#ENV MAVEN_HOME=/opt/maven
+ENV APP_ROOT=/opt/app-root
+#ENV OPENSHIFT_CLI=${APP_ROOT}/bin/oc
+#Update PATH
+#ENV PATH=${APP_ROOT}/bin:${JAVA_HOME}/bin:${MAVEN_HOME}/bin:${OPENSHIFT_CLI}:${PATH}
+ENV PATH=${APP_ROOT}/bin:${PATH}
+
+### Update Permissions and Execute any additional scripts or commands
+RUN mkdir -p ${APP_ROOT}/.kube && \
+    mkdir -p ${APP_ROOT}/data && \
+	#fix-permissions ${APP_ROOT}/.kube -P && \
+    #fix-permissions ${APP_ROOT}/data -P && \
+    #fix-permissions ${APP_ROOT} -P && \
+    chown -R developer:0 ${APP_ROOT} && \
+    chmod -R u+x ${APP_ROOT}/bin && \
+    #chmod +x ${APP_ROOT}/bin/uid_entrypoint.sh && \
+    #chmod +x ${APP_ROOT}/entrypoint.sh
+    chmod -R g=u ${APP_ROOT} /etc/passwd
+    #Add any scripts or other commands here
+    #${APP_ROOT}/bin/add-cert.sh ${APP_ROOT}/Cert.cer
 
 # shellinabox will listen on 8080
 EXPOSE 8080
 
 # Run as developer
-USER 1001
+USER developer
 
-# Run our init script
-CMD /opt/startsiab.sh
+# Workdir
+WORKDIR ${APP_ROOT}
+
+ENTRYPOINT [ "./bin/uid_entrypoint.sh" ]
+CMD ./bin/startsiab.sh
